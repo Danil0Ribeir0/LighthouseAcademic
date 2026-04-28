@@ -2,12 +2,6 @@ from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-class RPCResponse(BaseModel):
-    jsonrpc: str = "2.0"
-    id: str
-    timestamp: datetime
-    result: AnalysisResponse
-
 class RepositoryInfo(BaseModel):
     provider: str = Field(..., json_schema_extra={"example": "github"})
     url: HttpUrl
@@ -58,3 +52,9 @@ class AnalysisResponse(BaseModel):
     summary: Summary
     metrics: Dict[str, float]
     raw_data: Dict[str, Any]
+
+class RPCResponse(BaseModel):
+    jsonrpc: str = "2.0"
+    id: str
+    timestamp: datetime
+    result: AnalysisResponse
