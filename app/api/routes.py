@@ -1,20 +1,24 @@
 import requests
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from typing import Dict, Any
 
 from app.models.schemas import ProjectAnalysisRequest, RPCResponse
 from app.services.repository_extractor import GitHubExtractor
 from app.core.analyzer import ProjectAnalyzer
+from app.adapters.output_adapter import AnalysisOutputAdapter
+from app.api.dependencies import get_output_adapter
 
 router = APIRouter(prefix="/v1/services/analyzer", tags=["Análise RPC"])
 
 @router.post("/compute-health-score", response_model=RPCResponse)
-def analyze_project(request: ProjectAnalysisRequest):
+def analyze_project(
+    request: ProjectAnalysisRequest,
+    adapter: AnalysisOutputAdapter = Depends(get_output_adapter)
+):
     try:
         extractor = GitHubExtractor(request.repository)
-        
         commits_data = extractor.get_commit_history()
         
         members_map = {}
@@ -54,9 +58,7 @@ def analyze_project(request: ProjectAnalysisRequest):
                     pass
 
         raw_data = {
-            "repository_timeline": {
-                "commits": commits_data
-            },
+            "repository_timeline": {"commits": commits_data},
             "members_activity": members_activity,
             "documents_tracked": tracked_docs
         }
@@ -64,20 +66,18 @@ def analyze_project(request: ProjectAnalysisRequest):
         analyzer = ProjectAnalyzer(request_data=request, raw_data=raw_data)
         analysis_result = analyzer.execute_analysis()
 
-        return {
-            "jsonrpc": "2.0",
-            "id": str(uuid.uuid4()),
-            "timestamp": datetime.now(timezone.utc),
-            "result": analysis_result
-        }
+        response_envelope = RPCResponse(
+            jsonrpc="2.0",
+            id=str(uuid.uuid4()),
+            timestamp=datetime.now(timezone.utc),
+            result=analysis_result
+        )
+
+        adapter.save_result(response_envelope)
+
+        return response_envelope
 
     except ValueError as ve:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(ve)
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(ve))
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Falha na execução do procedimento: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Falha na execução do procedimento: {str(e)}")
