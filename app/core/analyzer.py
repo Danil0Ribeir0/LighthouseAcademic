@@ -86,7 +86,7 @@ class ProjectAnalyzer:
             
         oldest_date = None
         for c in commits:
-            c_date_str = c.get("date")
+            c_date_str = c.get("commit", {}).get("author", {}).get("date")
             if c_date_str:
                 c_date = datetime.fromisoformat(c_date_str.replace('Z', '+00:00'))
                 if oldest_date is None or c_date < oldest_date:
@@ -99,7 +99,7 @@ class ProjectAnalyzer:
         Determina a 'cor' do semáforo do projeto. Se houver um alerta de severidade alta,
         o status cai imediatamente para crítico, independentemente da nota.
         """
-        
+
         has_critical = any(a.get("severity") == "high" for a in alerts)
         
         if final_score < 50.0 or has_critical:

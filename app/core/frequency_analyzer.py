@@ -37,7 +37,7 @@ class FrequencyAnalyzer:
         buckets = [0] * num_buckets
 
         for commit in commits:
-            c_date_str = commit.get("date")
+            c_date_str = commit.get("commit", {}).get("author", {}).get("date")
 
             if not c_date_str:
                 continue

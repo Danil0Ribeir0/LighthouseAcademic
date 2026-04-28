@@ -1,3 +1,4 @@
+import requests
 from fastapi import APIRouter, HTTPException, status
 from typing import Dict, Any
 
@@ -42,7 +43,7 @@ def analyze_project(request: ProjectAnalysisRequest):
                         "size_bytes": doc_meta.get("size", 0),
                         "modification_count": 1
                     })
-                except request.exceptions.HTTPError:
+                except requests.exceptions.HTTPError:
                     pass
 
         raw_data = {

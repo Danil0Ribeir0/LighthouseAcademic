@@ -1,6 +1,6 @@
 from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 class RepositoryInfo(BaseModel):
     provider: str = Field(..., example="github")
@@ -43,9 +43,12 @@ class DocumentInfo(BaseModel):
     size_bytes: int
     modification_count: int
 
-class AnalysisResponse(BaseModel):
+class Summary(BaseModel):
     health_score: float
     status: str
     alerts: List[Alert]
+
+class AnalysisResponse(BaseModel):
+    summary: Summary
     metrics: Dict[str, float]
-    raw_data: Dict
+    raw_data: Dict[str, Any]
