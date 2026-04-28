@@ -37,4 +37,5 @@ class GitHubExtractor:
         """
         Método auxiliar para limpar a URL e retornar apenas 'dono/repositorio'.
         """
+        
         return url.rstrip("/").split("github.com/")[-1]
