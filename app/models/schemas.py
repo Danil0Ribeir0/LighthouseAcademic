@@ -17,6 +17,7 @@ class AnalysisConfig(BaseModel):
         "member_equity": 0.2
     }
     bucket_size_days: Optional[int] = None
+    uses_external_docs: bool = False
 
 class ProjectAnalysisRequest(BaseModel):
     repository: RepositoyInfo
