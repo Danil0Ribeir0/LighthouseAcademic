@@ -1,70 +1,69 @@
-import requests
 from typing import List, Dict
-from datetime import datetime
 from app.models.schemas import RepositoryInfo
+from app.services.github_client import GitHubClient
+from app.services.github_queries import COMMIT_HISTORY_QUERY
 
 class GitHubExtractor:
     """
-    Classe responsável por interagir com a API do GitHub e extrair 
-    os dados brutos necessários para a análise de saúde do projeto.
+    Orquestra as chamadas ao GitHubClient e adapta os dados brutos 
+    para o formato interno que o ProjectAnalyzer espera.
     """
-
-    BASE_URL = "https://api.github.com"
 
     def __init__(self, repo_info: RepositoryInfo):
         self.repo_info = repo_info
-        self.headers = {
-            "Accept": "application/vnd.github.v3+json"
-        }
-
-        if repo_info.access_token:
-            self.headers["Authorization"] = f"token {repo_info.access_token}"
+        self.client = GitHubClient(repo_info.access_token)
         
     def get_file_metadata(self, path: str) -> Dict:
-        """
-        Busca metadados de um arquivo específico (tamanho, data de modificação).
-        Útil para validar a presença e estagnação da documentação. [cite: 8, 27]
-        """
+        repo_owner, repo_name = self._parse_repo_url(str(self.repo_info.url)).split("/")
+        endpoint = f"repos/{repo_owner}/{repo_name}/contents/{path}?ref={self.repo_info.branch}"
+        return self.client.fetch_rest(endpoint)
 
-        repo_path = self._parse_repo_url(str(self.repo_info.url))
-        url = f"{self.BASE_URL}/repos/{repo_path}/contents/{path}?ref={self.repo_info.branch}"
-
-        response = requests.get(url, headers=self.headers)
-        response.raise_for_status()
-        return response.json()
-    
-    def get_commit_history(self, since: datetime = None) -> List[Dict]:
-        """
-        Extrai a lista de commits para calcular frequência e equidade entre membros.
-        """
+    def get_commit_history(self) -> List[Dict]:
+        repo_owner, repo_name = self._parse_repo_url(str(self.repo_info.url)).split("/")
         
-        repo_path = self._parse_repo_url(str(self.repo_info.url))
-        url = f"{self.BASE_URL}/repos/{repo_path}/commits"
+        all_commits = []
+        has_next_page = True
+        cursor = None
         
-        params = {"sha": self.repo_info.branch}
-        if since:
-            params["since"] = since.isoformat()
-
-        response = requests.get(url, headers=self.headers, params=params)
-        response.raise_for_status()
-        return response.json()
-    
-    def get_commit_details(self, commit_sha: str) -> Dict:
-        """
-        Busca os detalhes profundos de um commit específico usando o seu SHA,
-        incluindo as estatísticas de linhas adicionadas e removidas.
-        """
-        
-        repo_path = self._parse_repo_url(str(self.repo_info.url))
-        url = f"{self.BASE_URL}/repos/{repo_path}/commits/{commit_sha}"
-
-        response = requests.get(url, headers=self.headers)
-        response.raise_for_status()
-        return response.json()
+        while has_next_page:
+            variables = {
+                "owner": repo_owner,
+                "name": repo_name,
+                "branch": self.repo_info.branch,
+                "cursor": cursor
+            }
+            
+            data = self.client.fetch_graphql(COMMIT_HISTORY_QUERY, variables)
+            
+            try:
+                history = data["data"]["repository"]["ref"]["target"]["history"]
+                
+                for node in history["nodes"]:
+                    login = node.get("author", {}).get("user", {}).get("login") if node.get("author") and node["author"].get("user") else None
+                    name = node.get("author", {}).get("name", "Unknown")
+                    
+                    all_commits.append({
+                        "sha": node.get("oid"),
+                        "author": {"login": login} if login else None,
+                        "commit": {
+                            "author": {"name": name, "date": node.get("committedDate")}
+                        },
+                        "stats": {
+                            "additions": node.get("additions", 0),
+                            "deletions": node.get("deletions", 0)
+                        }
+                    })
+                
+                has_next_page = history["pageInfo"]["hasNextPage"]
+                cursor = history["pageInfo"]["endCursor"]
+                
+                if len(all_commits) >= 500:
+                    break
+                    
+            except (KeyError, TypeError):
+                break
+                
+        return all_commits
 
     def _parse_repo_url(self, url: str) -> str:
-        """
-        Método auxiliar para limpar a URL e retornar apenas 'dono/repositorio'.
-        """
-        
         return url.rstrip("/").split("github.com/")[-1]
