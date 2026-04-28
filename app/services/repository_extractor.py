@@ -48,6 +48,19 @@ class GitHubExtractor:
         response = requests.get(url, headers=self.headers, params=params)
         response.raise_for_status()
         return response.json()
+    
+    def get_commit_details(self, commit_sha: str) -> Dict:
+        """
+        Busca os detalhes profundos de um commit específico usando o seu SHA,
+        incluindo as estatísticas de linhas adicionadas e removidas.
+        """
+        
+        repo_path = self._parse_repo_url(str(self.repo_info.url))
+        url = f"{self.BASE_URL}/repos/{repo_path}/commits/{commit_sha}"
+
+        response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        return response.json()
 
     def _parse_repo_url(self, url: str) -> str:
         """

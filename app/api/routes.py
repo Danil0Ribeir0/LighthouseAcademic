@@ -28,7 +28,16 @@ def analyze_project(request: ProjectAnalysisRequest):
                     "lines_deleted": 0,
                     "issues_interacted": 0
                 }
+            
             members_map[username]["commits"] += 1
+            
+            sha = commit.get("sha")
+            if sha:
+                commit_details = extractor.get_commit_details(sha)
+                stats = commit_details.get("stats", {})
+                
+                members_map[username]["lines_added"] += stats.get("additions", 0)
+                members_map[username]["lines_deleted"] += stats.get("deletions", 0)
 
         members_activity = list(members_map.values())
 
