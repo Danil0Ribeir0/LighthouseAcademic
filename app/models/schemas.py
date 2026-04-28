@@ -2,7 +2,7 @@ from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
 from typing import List, Optional, Dict
 
-class RepositoyInfo(BaseModel):
+class RepositoryInfo(BaseModel):
     provider: str = Field(..., example="github")
     url: HttpUrl
     branch: str = "main"
@@ -20,10 +20,10 @@ class AnalysisConfig(BaseModel):
     uses_external_docs: bool = False
 
 class ProjectAnalysisRequest(BaseModel):
-    repository: RepositoyInfo
+    repository: RepositoryInfo
     deadline: datetime
     expected_members: List[str]
-    config: AnalysisConfig = AnalysisConfig()
+    config: AnalysisConfig = Field(default_factory=AnalysisConfig)
 
 class Alert(BaseModel):
     type: str

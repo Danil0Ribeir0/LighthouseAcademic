@@ -14,7 +14,7 @@ class GitHubExtractor:
     def __init__(self, repo_info: RepositoryInfo):
         self.repo_info = repo_info
         self.headers = {
-            "Accpet": "application/vnd.github.v3+json"
+            "Accept": "application/vnd.github.v3+json"
         }
 
         if repo_info.access_token:
@@ -30,6 +30,22 @@ class GitHubExtractor:
         url = f"{self.BASE_URL}/repos/{repo_path}/contents/{path}?ref={self.repo_info.branch}"
 
         response = requests.get(url, headers=self.headers)
+        response.raise_for_status()
+        return response.json()
+    
+    def get_commit_history(self, since: datetime = None) -> List[Dict]:
+        """
+        Extrai a lista de commits para calcular frequência e equidade entre membros.
+        """
+        
+        repo_path = self._parse_repo_url(str(self.repo_info.url))
+        url = f"{self.BASE_URL}/repos/{repo_path}/commits"
+        
+        params = {"sha": self.repo_info.branch}
+        if since:
+            params["since"] = since.isoformat()
+
+        response = requests.get(url, headers=self.headers, params=params)
         response.raise_for_status()
         return response.json()
 
