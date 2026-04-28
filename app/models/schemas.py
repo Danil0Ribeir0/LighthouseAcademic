@@ -16,6 +16,7 @@ class AnalysisConfig(BaseModel):
         "doc_presence": 0.4,
         "member_equity": 0.2
     }
+    bucket_size_days: Optional[int] = None
 
 class ProjectAnalysisRequest(BaseModel):
     repository: RepositoyInfo
