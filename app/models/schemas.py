@@ -2,6 +2,12 @@ from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
+class RPCResponse(BaseModel):
+    jsonrpc: str = "2.0"
+    id: str
+    timestamp: datetime
+    result: AnalysisResponse
+
 class RepositoryInfo(BaseModel):
     provider: str = Field(..., example="github")
     url: HttpUrl

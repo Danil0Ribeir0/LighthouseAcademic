@@ -1,14 +1,16 @@
 import requests
+import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status
 from typing import Dict, Any
 
-from app.models.schemas import ProjectAnalysisRequest, AnalysisResponse
+from app.models.schemas import ProjectAnalysisRequest, RPCResponse
 from app.services.repository_extractor import GitHubExtractor
 from app.core.analyzer import ProjectAnalyzer
 
-router = APIRouter(prefix="/v1/projetos", tags=["Análise de Projetos"])
+router = APIRouter(prefix="/v1/services/analyzer", tags=["Análise RPC"])
 
-@router.post("/analise", response_model=AnalysisResponse, summary="Gera o Score de Saúde do Projeto")
+@router.post("/compute-health-score", response_model=RPCResponse)
 def analyze_project(request: ProjectAnalysisRequest):
     try:
         extractor = GitHubExtractor(request.repository)
@@ -31,13 +33,9 @@ def analyze_project(request: ProjectAnalysisRequest):
             
             members_map[username]["commits"] += 1
             
-            sha = commit.get("sha")
-            if sha:
-                commit_details = extractor.get_commit_details(sha)
-                stats = commit_details.get("stats", {})
-                
-                members_map[username]["lines_added"] += stats.get("additions", 0)
-                members_map[username]["lines_deleted"] += stats.get("deletions", 0)
+            stats = commit.get("stats", {})
+            members_map[username]["lines_added"] += stats.get("additions", 0)
+            members_map[username]["lines_deleted"] += stats.get("deletions", 0)
 
         members_activity = list(members_map.values())
 
@@ -66,10 +64,20 @@ def analyze_project(request: ProjectAnalysisRequest):
         analyzer = ProjectAnalyzer(request_data=request, raw_data=raw_data)
         analysis_result = analyzer.execute_analysis()
 
-        return analysis_result
+        return {
+            "jsonrpc": "2.0",
+            "id": str(uuid.uuid4()),
+            "timestamp": datetime.now(timezone.utc),
+            "result": analysis_result
+        }
 
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(ve)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Falha ao analisar o projeto: {str(e)}"
+            detail=f"Falha na execução do procedimento: {str(e)}"
         )
