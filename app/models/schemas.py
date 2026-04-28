@@ -9,7 +9,7 @@ class RPCResponse(BaseModel):
     result: AnalysisResponse
 
 class RepositoryInfo(BaseModel):
-    provider: str = Field(..., example="github")
+    provider: str = Field(..., json_schema_extra={"example": "github"})
     url: HttpUrl
     branch: str = "main"
     access_token: Optional[str] = None
