@@ -1,57 +1,109 @@
-from datetime import datetime
-from typing import List, Dict
-from app.models.schemas import AnalysisConfig, ProjectAnalysisRequest
+from datetime import datetime, timezone
+from typing import Dict, Any
+
+from app.models.schemas import ProjectAnalysisRequest
+from app.core.equity_analyzer import EquityAnalyzer
+from app.core.frequency_analyzer import FrequencyAnalyzer
+from app.core.documentation_analyzer import DocumentationAnalyzer
 
 class ProjectAnalyzer:
-    def __init__(self, request_data: ProjectAnalysisRequest, raw_data: Dict):
+    """
+    Orquestrador central que une a extração de dados brutos com as regras de negócio
+    para gerar o Score de Saúde final do projeto.
+    """
+
+    def __init__(self, request_data: ProjectAnalysisRequest, raw_data: Dict[str, Any]):
+        self.request_data = request_data
         self.config = request_data.config
-        self.deadline = request_data.deadline
         self.raw_data = raw_data
-        self.is_post_deadline = datetime.now() > self.deadline
+        
+        self.deadline = request_data.deadline
+        if self.deadline.tzinfo is None:
+            self.deadline = self.deadline.replace(tzinfo=timezone.utc)
+            
+        now = datetime.now(timezone.utc)
+        self.is_post_deadline = now > self.deadline
 
-    def calculate_health_score(self) -> Dict:
+    def execute_analysis(self) -> Dict[str, Any]:
         """
-        Calcula a média ponderada baseada nas métricas de processo.
+        Aciona os três pilares analíticos, calcula a média ponderada e consolida os alertas.
         """
 
-        weights = self.config.weights
+        commits = self.raw_data.get("repository_timeline", {}).get("commits", [])
+        members_activity = self.raw_data.get("members_activity", [])
+        tracked_docs = self.raw_data.get("documents_tracked", [])
 
-        freq_score = self._analyze_commit_frequency()
-        doc_score = self._analyze_documentation_status()
-        equity_score = self._analyze_member_equity()
+        start_date = self._get_project_start_date(commits)
 
-        final_score = (
-            (freq_score * weights["commit_frequency"]) +
-            (doc_score * weights["doc_presence"]) +
-            (equity_score * weights["member_equity"])
+        freq_score, freq_alerts = FrequencyAnalyzer.calculate(
+            commits=commits,
+            start_date=start_date,
+            deadline=self.deadline,
+            bucket_size_days=self.config.bucket_size_days
         )
 
+        doc_score, doc_alerts = DocumentationAnalyzer.calculate(
+            tracked_docs=tracked_docs,
+            uses_external_docs=self.config.uses_external_docs,
+            is_post_deadline=self.is_post_deadline
+        )
+
+        equity_score, equity_alerts = EquityAnalyzer.calculate(
+            members_activity=members_activity
+        )
+
+        weights = self.config.weights
+        final_score = (
+            (freq_score * weights.get("commit_frequency", 0.4)) +
+            (doc_score * weights.get("doc_presence", 0.4)) +
+            (equity_score * weights.get("member_equity", 0.2))
+        )
+
+        all_alerts = freq_alerts + doc_alerts + equity_alerts
+        status = self._determine_overall_status(final_score, all_alerts)
+
         return {
-            "health_score": round(final_score, 2),
+            "summary": {
+                "health_score": round(final_score, 2),
+                "status": status,
+                "alerts": all_alerts
+            },
             "metrics": {
                 "commit_frequency_score": freq_score,
                 "doc_presence_score": doc_score,
                 "member_equity_score": equity_score
-            }
+            },
+            "raw_data": self.raw_data
         }
-    
-    def _analyze_commit_frequency(self) -> float:
+
+    def _get_project_start_date(self, commits: list) -> datetime:
         """
-        Analisa se o ritmo de commits foi constante até o deadline[cite: 9, 26].
+        Itera sobre o histórico bruto para descobrir o dia em que o projeto realmente começou.
         """
 
-        return 80.0
-    
-    def _analyze_documentation_status(self) -> float:
-        """
-        Valida a presença e atualização de arquivos críticos.
-        """
+        if not commits:
+            return datetime.now(timezone.utc)
+            
+        oldest_date = None
+        for c in commits:
+            c_date_str = c.get("date")
+            if c_date_str:
+                c_date = datetime.fromisoformat(c_date_str.replace('Z', '+00:00'))
+                if oldest_date is None or c_date < oldest_date:
+                    oldest_date = c_date
+                    
+        return oldest_date or datetime.now(timezone.utc)
 
-        return 70.0
-    
-    def _analyze_member_equity(self) -> float:
+    def _determine_overall_status(self, final_score: float, alerts: list) -> str:
         """
-        Identifica o "herói" ou distribuição equilibrada.
+        Determina a 'cor' do semáforo do projeto. Se houver um alerta de severidade alta,
+        o status cai imediatamente para crítico, independentemente da nota.
         """
         
-        return 90.0
+        has_critical = any(a.get("severity") == "high" for a in alerts)
+        
+        if final_score < 50.0 or has_critical:
+            return "critical"
+        elif final_score < 80.0 or len(alerts) > 0:
+            return "warning"
+        return "healthy"
